@@ -1,0 +1,204 @@
+<?php
+function mymodule_permission(){
+	return array(
+		'access create transaction'=>array(
+				'title'=> 'View control transaction',
+				'description'=>' View control transaction'
+			)
+	);
+}
+
+function mymodule_menu() {
+  $items = array();
+  $items['create-transaction'] = array(
+    'title' => 'Create transaction',
+    'description' => 'Control transaction.',
+    'page callback' => 'create_trans',
+    'access arguments' => array('access create transaction'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+function create_trans(){
+	$html = l('Create transaction','multistep');
+	$html .= '<div>'.l('Rao vat','#').'</div>';
+	return $html;
+}
+
+function form_info_transaction($form, &$form_state){
+	$form['trans_title'] = array(
+		'#title' => 'Transaction title',
+        '#description' => 'Type a title transaction',
+        '#type' => 'textfield',
+        '#required' => TRUE,
+	);
+	$form['email_address_partner'] = array(
+		'#title' => 'Email Address of Seller',
+        '#description' => 'Type a email to contact',
+        '#type' => 'textfield',
+        '#required' => TRUE,
+	);
+	$form['who_pay_fee']= array(
+	  '#type' => 'radios',
+	  '#options' => array(t('Buyer'), t('Seller'), t('Share')),
+	  '#title' => t('Who will pay the extra fee?'),
+	);	
+	$options =array();
+	for($i=1;$i<=10;$i++){
+		$options[$i] = $i;
+	}
+	$form['inspection_priod']= array(
+	  '#type' => 'select',
+	  '#options' => $options,
+	  '#title' => t('Time to inspect'),
+	);	
+	return $form;
+}
+
+function form_rule($form, &$form_state){
+	$form['item'] = array(
+	    '#type' => 'select',
+	    '#title' => t('Selected'),
+	    '#options' => array(
+	      0 => t('Hang hoa'),
+	      1 => t('Xe may'),
+	      2 => t('Dien thoai'),
+	    ),
+	    '#description' => t('Chon lua danh muc hang hoa.'),
+    );
+	$form['rule'] = array(
+	    '#type' => 'select',
+	    '#title' => t('Selected'),
+	    '#options' => array(
+	      0 => t('Buyer'),
+	      1 => t('Seller'),
+	    ),
+	    '#description' => t('Chon loai hinh giao dich.'),
+    );
+	$form['submit']= array(
+		'#type'=>'submit',
+		'#value'=>'Submit'
+	);
+	return $form;
+}
+
+function form_rule_submit(&$form, &$form_state, $form_id){
+	$form_state['redirectt']='thong-tin-hang-hoa';
+}
+
+function mymodule_user_register_form($form, &$form_state){
+	
+    $form['name'] = array(
+        '#title' => 'username',
+        '#description' => 'choose a username',
+        '#type' => 'textfield',
+        '#required' => TRUE,
+    );
+    $form['mail'] = array(
+        '#title' => 'email',
+        '#description' => 'enter a valid email address',
+        '#type' => 'textfield',
+        '#required' => TRUE,
+    );
+        $form['field_fname'] = array(
+        '#title' => 'First Name',
+        '#type' => 'textfield',
+    );
+        $form['field_lname'] = array(
+        '#title' => 'Last Name',
+        '#type' => 'textfield',
+    );
+        $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Save'),
+    );
+	
+	return $form;
+}
+function mymodule_form_user_register_form_alter(&$form, &$form_state, $form_id) {
+ $form['account']['name']['#type']='hidden';
+  $form['#validate'][] = 'custom_data_validate';
+  $form['account']['name']['#default_value']='test'.rand(10,200);
+  $form['#theme'] = 'user_register';
+  $form['company_name'] = array('#type' => 'textfield',
+    '#title' => t('Company name'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+  $form['first_name'] = array('#type' => 'textfield',
+    '#title' => t('First name'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+  $form['midle_name'] = array('#type' => 'textfield',
+    '#title' => t('Midle name'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+  $form['last_name'] = array('#type' => 'textfield',
+    '#title' => t('Last name'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+   
+  $form['address1'] = array('#type' => 'textfield',
+    '#title' => t('Your address 1'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+   $form['address2'] = array('#type' => 'textfield',
+    '#title' => t('Address 2'),
+    '#size' => 60,
+    '#maxlength' => 125,
+    '#required' => TRUE,
+  );
+ 
+  $form['#submit'][] = 'mymodule_user_register_submit';
+  
+  
+}
+function custom_data_validate($form, &$form_state){
+
+	$form_state['values']['name'] = $form_state['values']['mail'];
+}
+function mymodule_user_register_submit($form, &$form_state){
+	//Sava info user
+	$values = $form_state['values'];
+	db_insert('user_info')
+		  ->fields(array(	'uid'=>$form_state['complete form']['#user']->uid,
+		  					'company_name'=>$values['company_name'],
+							'first_name'=>$values['first_name'],
+							'last_name'=>$values['midle_name'],
+							'midle_name'=>$values['last_name'],
+							'address1'=>$values['address1'],
+							'address2'=>$values['address2']
+						   ))
+		  ->execute();
+	//Auto login
+	$uid = user_authenticate($values['name'], $values['pass']);
+
+	$form_state['redirect']='node';
+	
+}
+
+function mymodule_theme(){
+  return array(
+    'user_register' => array(
+      'render element' => 'form',
+      'template' => 'user-register',
+    ),
+  );
+}
+
+function template_preprocess_user_register(&$variables) {
+
+	$variables['name'] = drupal_render($variables['form']['account']['name']);
+	$variables['submit'] = drupal_render($variables['form']['submit']);
+  $variables['rendered'] = drupal_render_children($variables['form']);
+}

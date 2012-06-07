@@ -1,0 +1,3 @@
+name = "Mymodule"
+description = "Hook drupal system"
+core = "7.x"

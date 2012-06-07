@@ -1,0 +1,12 @@
+<?php
+function profile_unlock_system_info_alter(&$info, $file, $type) {
+  if ($type == 'module' && $file->name == 'profile') {
+    $info['hidden'] = FALSE;
+  }
+}
+
+function profile_unlock_form_user_register_form_alter(&$form, &$form_state, $form_id) {
+   die;
+      $form['account']['name']['#title'] = t('Nickname');
+  
+}

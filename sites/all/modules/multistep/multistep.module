@@ -1,0 +1,688 @@
+<?php
+define('TRANS_CANCEL', -1);
+define('TRANS_WAIT_CONFIRM', 0);
+define('TRANS_CONFIRMED', 1);
+/**
+ * @file Drupal 7 multistep example module by Ben Jeavons for demonstration only
+ * http://growingventuresolutions.com/node/841
+ */
+
+function multistep_menu() {
+  $items['multistep-simple'] = array(
+    'title' => 'multistep',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('multistep_simple'),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['multistep-confirm'] = array(
+    'title' => 'multistep',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('multistep_confirm_example'),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['multistep'] = array(
+    'title' => 'multistep',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('multistep_form'),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['manage-transaction'] = array(
+    'title' => 'Management Transaction',
+    'page callback' => 'manage_trans',
+    'page arguments' => array('multistep_form'),
+    'access arguments' => array('access content'),
+  );
+  
+   $items['edit-transaction'] = array(
+    'title' => 'Edit Transaction',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('edit_trans'),
+    'access arguments' => array('access content'),
+  );
+  
+  return $items;
+}
+
+function edit_trans($form, &$form_state){
+	$nid = arg(1);
+	$info = node_load($nid);
+	$form['payment'] = array(
+		'#type'=>'radios',
+		'#title'=>'Payment',
+		'#description'=>'Chon phuong thuc thanh toan',
+		'#options'=>array('Master Card','Visa','Paypal'),
+	);
+	
+	$form['cancel_trans']= array(
+		'#type'=>'submit',
+		'#value'=>'Huy transaction'
+	);
+	$form['pay']= array(
+		'#type'=>'submit',
+		'#value'=>'Thanh toan'
+	);
+	return $form;
+}
+
+function edit_trans_submit($form,&$form_state){
+	$values = $form_state['values'];
+	if(!empty($values['cancel_trans'])){
+		db_update('field_data_field_status')
+		  ->condition('entity_id', 1)
+		  ->fields(array('field_status_value'=>-1					
+						   ))
+		  ->execute();
+	}
+}
+
+function manage_trans(){
+	global $user;
+	$uid = $user->uid;
+	if(!$uid)
+		drupal_goto('node');
+	$profile = user_load($uid);
+	///Create table managerment transaction
+	//Header
+	$header = array(
+		array('data' => 'Title', 'field' => 'title', 'sort' => 'asc'),
+		array('data' => 'Transaction ID', 'field' => 'nid'),
+		array('data' => 'Type', 'field' => 'type'),
+		array('data' => 'Created', 'field' => 'created'),
+		array('data' => 'Email', 'field' => 'ub.field_email_value'),
+		array('data' => 'Quanlity', 'field' => 'ql.field_quanlity_value'),
+		array('data' => 'Price', 'field' => 'p.field_price_value'),
+		array('data' => 'Total', 'field' => 't.field_total_value'),
+		array('data' => 'Published'),
+		array('data' => 'Action'),
+	);
+	//Select data
+	$ored = db_or();
+	$ored->condition('uid', $uid)
+	->condition('ub.field_email_value', $user->name)
+	  	;	
+		 
+	$query  = db_select('node', 'n');
+	$ublias = $query->leftJoin('field_data_field_email','ub','ub.entity_id = n.nid');
+	$stlias = $query->leftJoin('field_data_field_status','st','st.entity_id = n.nid');
+	$qllias = $query->leftJoin('field_data_field_quanlity','ql','ql.entity_id = n.nid');
+	$picellias = $query->leftJoin('field_data_field_price','p','p.entity_id = n.nid');
+	$totalllias = $query->leftJoin('field_data_field_total','t','t.entity_id = n.nid');
+			  $query->condition('status', 1)
+					->condition($ored)
+					->extend('PagerDefault') 	//Pager Extender
+					->limit(10)				//10 results per page
+					->extend('TableSort')		//Sorting Extender
+					->orderByHeader($header)//Field to sort on is picked from $header
+					->fields ('n', array (
+						'nid',
+						'title',
+						'type',
+						'created',
+					))
+					->fields ('ub', array (
+						'field_email_value',
+					))
+					->fields ('ql', array (
+						'field_quanlity_value',
+					))
+					->fields ('p', array (
+						'field_price_value',
+					))
+					->fields ('t', array (
+						'field_total_value',
+					))
+					->fields($stlias,array('field_status_value'));
+	//Create row data
+	$results = $query
+			->execute();
+	$rows = array();	
+	foreach ($results as $node) {
+		switch ($node->field_status_value) {
+			case 0:
+				$status = 'Wait confirm';
+				break;
+			case 1:
+				$status = 'Confirmed';
+				break;
+			case 2:
+				$status = 'Cancel';
+				break;
+			default:	
+				break;
+		}	
+		
+		$rows[] = array(
+				'data' => array(
+					  l($node->title, 'node/'. $node->nid .'/edit'),
+					  $node->nid,
+					  $node->type,
+					  format_date($node->created),
+					  $node->field_email_value,
+					  $node->field_quanlity_value,
+					  $node->field_price_value,
+					  $node->field_total_value,
+					  $status,
+					  l('Edit','edit-transaction/'.$node->nid)
+				)
+		);
+	}
+	
+	// Theme table
+	$html = theme('table', 
+			array(
+				'header' => $header,
+				'rows'=>$rows,
+				'caption' => 'Creating Drupal 7 style tables',	//Optional Caption for the table
+				'sticky' => TRUE,						//Optional to indicate whether the table headers should be sticky
+				'empty' => 'No nodes created...',		//Optional empty text for the table if resultset is empty
+			)
+		);
+	//Pager
+	$html .= theme('pager',
+			array(
+				'tags' => array()
+			)
+	);
+	return $html;
+}
+
+function get_uid($username)
+{    
+    // Function that returns the uid based on the username given
+    $user = db_fetch_object(db_query("SELECT uid FROM users WHERE name='$username'"));
+    return $user->uid;
+}
+
+
+function multistep_simple($form, &$form_state) {
+  // Check if storage contains a value. A value is set only after the form is submitted and we return here.
+  if (!empty($form_state['storage']['myvalue'])) {
+    // Display a message with the submitted value.
+    drupal_set_message(t("You submitted: @name", array('@name' => $form_state['storage']['myvalue'])));
+  }
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#description' => t('Enter your name'),
+    '#required' => TRUE,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+  return $form;
+}
+
+// Our submit handler for multistep_simple.
+function multistep_simple_submit($form, &$form_state) {
+  // Tell FAPI to rebuild.
+  $form_state['rebuild'] = TRUE;
+  // Store submitted value.
+  $form_state['storage']['myvalue'] = $form_state['values']['name'];
+}
+
+function multistep_confirm_example($form, &$form_state) {
+  if (empty($form_state['delete'])) {
+    $form['data'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Survey response'),
+      '#description' => t('Enter your response.'),
+      '#required' => TRUE,
+    );
+    $form['delete'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Delete previous'),
+      '#description' => t('Delete all previous responses.'),
+    );
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Submit'),
+    );
+  }
+  else {
+    $form = multistep_confirm_example_delete_confirm($form, $form_state);
+  }
+  return $form;
+}
+
+function multistep_confirm_example_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  if (!empty($values['confirm'])) {
+    // User submitted confirm form.
+    // Delete all responses.
+    drupal_set_message(t('Deleted all older responses.'));
+  }
+  else {
+    if (!empty($values['delete'])) {
+      $form_state['rebuild'] = TRUE;
+      $form_state['delete'] = TRUE;
+    }
+    // Save this response.
+    // [...]
+    drupal_set_message(t('Your response has been saved.'));
+  }
+}
+
+function multistep_confirm_example_delete_confirm($form, &$form_state) {
+  // Specify our step submit callback.
+  $form['step_submit'] = array('#type' => 'value', '#value' => 'queue_ui_delete_submit');
+  return confirm_form($form,
+    t('Are you sure you want to older responses?'),
+    'multistep-confirm',
+    t('All older survey responses will be deleted.'),
+    t('Delete'),
+    t('Cancel')
+  );
+}
+
+/**
+ * Start advanced example using variable functions.
+ */
+
+/**
+ * Primary form builder.
+ */
+function multistep_form($form, &$form_state) {
+  // Initialize.
+  if ($form_state['rebuild']) {
+    // Don't hang on to submitted data in form state input.
+    $form_state['input'] = array();
+  }
+  if (empty($form_state['storage'])) {
+    // No step has been set so start with the first.
+    $form_state['storage'] = array(
+      'step' => 'multistep_form_start',
+    );
+  }
+
+  // Return the form for the current step.
+  $function = $form_state['storage']['step'];
+  $form = $function($form, $form_state);
+  return $form;
+}
+
+/**
+ * Primary validate handler.
+ */
+function multistep_form_validate($form, &$form_state) {
+  // Call step validate handler if it exists.
+  if (function_exists($form_state['storage']['step'] . '_validate')) {
+    $function = $form_state['storage']['step'] . '_validate';
+    $function($form, $form_state);
+  }
+  return;
+}
+
+/**
+ * Primary submit handler.
+ */
+function multistep_form_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  if (isset($values['back']) && $values['op'] == $values['back']) {
+    // Moving back in form.
+    $step = $form_state['storage']['step'];
+    // Call current step submit handler if it exists to unset step form data.
+    if (function_exists($step . '_submit')) {
+      $function = $step . '_submit';
+      $function($form, $form_state);
+    }
+    // Remove the last saved step so we use it next.
+    $last_step = array_pop($form_state['storage']['steps']);
+    $form_state['storage']['step'] = $last_step;
+  }
+  else {
+    // Record step.
+    $step = $form_state['storage']['step'];
+    $form_state['storage']['steps'][] = $step;
+    // Call step submit handler if it exists.
+    if (function_exists($step . '_submit')) {
+      $function = $step . '_submit';
+      $function($form, $form_state);
+    }
+  }
+  return;
+}
+
+function multistep_form_start($form, &$form_state) {
+ 	$form['item_trans'] = array(
+	    '#type' => 'select',
+	    '#title' => t('Selected'),
+	    '#options' => array(
+	      0 => t('Hang hoa'),
+	      1 => t('Xe may'),
+	      2 => t('Dien thoai'),
+	    ),
+	    '#default_value' => isset($form_state['storage']['item_trans']) ? $form_state['storage']['item_trans'] : NULL,
+	    '#description' => t('Chon lua danh muc hang hoa.'),
+    );
+	$form['rule'] = array(
+	    '#type' => 'select',
+	    '#title' => t('Selected'),
+	    '#options' => array(
+	      0 => t('Buyer'),
+	      1 => t('Seller'),
+	    ),
+	    '#description' => t('Chon loai hinh giao dich.'),
+	     '#default_value' => isset($form_state['storage']['rule']) ? $form_state['storage']['rule'] : NULL,
+    );
+	$form['submit']= array(
+		'#type'=>'submit',
+		'#value'=>'Next'
+	);
+    return $form;
+
+}
+
+function multistep_form_start_submit($form, &$form_state) {
+  // Trigger multistep, there are more steps.
+  $form_state['rebuild'] = TRUE;
+  $values = $form_state['values'];
+  
+  if (isset($values['back']) && $values['op'] == $values['back']) {
+    // User is moving back from this form, clear our storage.
+    $form_state['storage']['item_trans'] = NULL;
+  }
+  /*else if ($form_state['values']['item_trans'] == 'other') {
+    // Set the next step.
+    $form_state['storage']['item_trans'] = NULL; // Clear out because of our default_value use.
+    $form_state['storage']['step'] = 'multistep_form_define_musician';
+  }*/
+  else {
+    // We might do something with the values here...
+    $form_state['storage']['item_trans'] = $form_state['values']['item_trans'];
+	$form_state['storage']['rule'] = $form_state['values']['rule'];
+    // Set the next step.
+    $form_state['storage']['step'] = 'multistep_form_info_trans';
+  }
+}
+
+function multistep_form_define_musician($form, &$form_state) {
+  $form['musician'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Musician'),
+    '#default_value' => isset($form_state['storage']['musician']) ? $form_state['storage']['musician'] : NULL,
+  );
+  $form['back'] = array(
+    '#type' => 'submit',
+    '#value' => t('Back'),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Next'),
+  );
+  
+  // Pretend this step is another, to trigger its submit handler.
+  $form_state['storage']['step'] = 'multistep_form_start';
+  return $form;
+}
+
+function multistep_form_info_trans($form, &$form_state) {
+ 	$form['trans_title'] = array(
+		'#title' => 'Transaction title',
+        '#description' => 'Type a title transaction',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['trans_title']) ? $form_state['storage']['trans_title'] : NULL,
+        
+	);
+	$form['email_address_partner'] = array(
+		'#title' => 'Email Address of Seller',
+        '#description' => 'Type a email to contact',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['email_address_partner']) ? $form_state['storage']['email_address_partner'] : NULL,       
+	);
+	$form['who_pay_fee']= array(
+	  '#type' => 'radios',
+	  '#options' => array(t('Buyer'), t('Seller'), t('Share')),
+	  '#title' => t('Who will pay the extra fee?'),
+	  '#default_value' => isset($form_state['storage']['who_pay_fee']) ? $form_state['storage']['who_pay_fee'] : NULL,
+	);	
+	$options =array();
+	for($i=1;$i<=10;$i++){
+		$options[$i] = $i;
+	}
+	$form['inspection_priod']= array(
+	  '#type' => 'select',
+	  '#options' => $options,
+	  '#title' => t('Time to inspect'),
+	  '#default_value' => isset($form_state['storage']['inspection_priod']) ? $form_state['storage']['inspection_priod'] : NULL,
+	);	
+	
+	$form['back'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Back'),
+  	);
+  	$form['submit'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Next'),
+  	);
+  
+  	return $form;
+}
+
+
+function multistep_form_info_trans_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  $form_state['rebuild'] = TRUE;
+  if (isset($values['back']) && $values['op'] == $values['back']) {
+    // User is moving back from this form, clear our storage.
+
+    $form_state['storage']['trans_title'] = NULL;
+  }
+ // else if ($values['unknown']) {
+    // Skip to confirm step.
+ //   $form_state['storage']['step'] = 'multistep_form_confirm';
+ // }
+  else {
+    $form_state['storage']['trans_title'] = $form_state['values']['trans_title'];
+	$form_state['storage']['email_address_partner'] = $form_state['values']['email_address_partner'];
+	$form_state['storage']['who_pay_fee'] = $form_state['values']['who_pay_fee'];
+	$form_state['storage']['inspection_priod'] = $form_state['values']['inspection_priod'];
+	$form_state['storage']['email_address_partner'] = $form_state['values']['email_address_partner'];
+	  
+    // Set the next step.
+    $form_state['storage']['step'] = 'multistep_form_heard';
+  }
+}
+
+function multistep_form_hanghoa($form,&$form_state){
+	$form['name_item'] = array(
+		'#title' => 'Name',
+        '#description' => 'Type a name of '.$form_state['storage']['item_trans'],
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['name_item']) ? $form_state['storage']['name_item'] : NULL,
+	);
+	$form['quanlity'] = array(
+		'#title' => 'total',
+        '#description' => 'Type a quanlity',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['quanlity']) ? $form_state['storage']['quanlity'] : NULL,
+        
+	);
+	$form['total_price'] = array(
+		'#title' => 'total',
+        '#description' => 'Type a price',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['total_price']) ? $form_state['storage']['total_price'] : NULL,
+        
+	);
+	$form['sub_total'] = array(
+		'#title' => 'Sub total',
+        '#description' => '',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['sub_total']) ? $form_state['storage']['sub_total'] : NULL,
+	);
+	$form['total'] = array(
+		'#title' => 'Total',
+        '#description' => '',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['total']) ? $form_state['storage']['total'] : NULL,
+        
+	);
+	
+	$form['back'] = array(
+    '#type' => 'submit',
+    '#value' => t('Back'),
+  	);
+ 	 $form['submit'] = array(
+   	 	'#type' => 'submit',
+   		'#value' => t('Next'),
+  	);
+  
+  return $form;
+}
+
+function multistep_form_heard($form, &$form_state) {
+  
+	$form['name_item'] = array(
+		'#title' => 'Name',
+        '#description' => 'Type a name of '.$form_state['storage']['item_trans'],
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['name_item']) ? $form_state['storage']['name_item'] : NULL,
+	);
+	$form['quanlity'] = array(
+		'#title' => 'Quanlity',
+        '#description' => 'Type a quanlity',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['quanlity']) ? $form_state['storage']['quanlity'] : NULL,
+  		'#ajax' => array(
+	        'callback' => 'ajax_total_callback',
+	        'wrapper' => 'replace_textfield_div',
+	     ),
+	);
+	$form['total_price'] = array(
+		'#title' => 'total',
+        '#description' => 'Type a price',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['total_price']) ? $form_state['storage']['total_price'] : NULL,
+        '#ajax' => array(
+	        'callback' => 'ajax_total_callback',
+	        'wrapper' => 'replace_textfield_div',
+	     ),
+	);
+	$form['sub_total'] = array(
+		'#title' => 'Sub total',
+        '#description' => '',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['sub_total']) ? $form_state['storage']['sub_total'] : NULL,
+         '#ajax' => array(
+	        'callback' => 'ajax_total_callback',
+	        'wrapper' => 'replace_textfield_div',
+	     ),
+	);
+	$form['total'] = array(
+		'#title' => 'Total',
+        '#type' => 'textfield',
+        '#default_value' => isset($form_state['storage']['total']) ? $form_state['storage']['total'] : NULL,
+       
+        '#prefix' => '<div id="replace_textfield_div">',
+    	'#suffix' => '</div>',
+        
+	);
+	if (!empty($form_state['values']['sub_total'])) {
+    	$form['total']['#default_value'] =($form_state['values']['total_price']*$form_state['values']['quanlity']) + $form_state['values']['sub_total'];
+  	}
+	$form['back'] = array(
+    '#type' => 'submit',
+    '#value' => t('Back'),
+  	);
+ 	 $form['submit'] = array(
+   	 	'#type' => 'submit',
+   		'#value' => t('Next'),
+  	);
+  
+  return $form;
+}
+function ajax_total_callback($form, $form_state){
+	 return $form['total'];
+}
+
+function multistep_form_heard_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  $form_state['rebuild'] = TRUE;
+
+  if (isset($values['back']) && $values['op'] == $values['back']) {
+    // User is moving back from this form, clear our storage.
+    $form_state['storage']['heard'] = NULL;
+  }
+  else {
+      $form_state['storage']['name_item'] = $form_state['values']['name_item'];
+	  $form_state['storage']['quanlity'] = $form_state['values']['quanlity'];
+	  $form_state['storage']['total_price'] = $form_state['values']['total_price'];
+	  $form_state['storage']['sub_total'] = $form_state['values']['sub_total'];
+	  $form_state['storage']['total'] = $form_state['values']['total'];
+    // Set the next step.
+    $form_state['storage']['step'] = 'multistep_form_confirm';
+  }
+}
+
+function multistep_form_confirm($form, &$form_state) {
+  $description = t('Submit your response?');
+  $form['back'] = array(
+    '#type' => 'submit',
+    '#value' => t('Back'),
+    '#weight' => 10,
+  );
+  return confirm_form($form,
+    t('Ready to submit?'),
+    'multistep',
+    $description,
+    t('Submit'),
+    t('Cancel')
+  );
+}
+
+function multistep_form_confirm_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  if (isset($values['back']) && $values['op'] == $values['back']) {
+    // Only rebuild if moving back.
+    $form_state['rebuild'] = TRUE;
+  }
+  else {
+    // Do something with all this data.
+    $body_text = 'This is the body text I want entered with the node.';
+  	$node = new stdClass();
+  	$node->type = 'transaction';
+  	node_object_prepare($node);
+  	$node->title    = $form_state['storage']['trans_title'];
+  	$node->language = LANGUAGE_NONE;
+	$node->body[$node->language][0]['value']   = $body_text;
+  	$node->body[$node->language][0]['summary'] = text_summary($body_text);
+  	$node->body[$node->language][0]['format']  = 'filtered_html';
+	//Custom field
+	$node->field_transtype[$node->language][0]['value'] = $form_state['storage']['item_trans'];
+	$node->field_usertype[$node->language][0]['value'] = $form_state['storage']['rule'];
+	$node->field_email[$node->language][0]['value'] = $form_state['storage']['email_address_partner'];
+	$node->field_whopayfee[$node->language][0]['value'] = $form_state['storage']['who_pay_fee'];
+	$node->field_timeinspect[$node->language][0]['value'] = $form_state['storage']['inspection_priod'];
+	$node->field_nameitem[$node->language][0]['value'] = $form_state['storage']['name_item'];
+	$node->field_quanlity[$node->language][0]['value'] = $form_state['storage']['quanlity'];
+	$node->field_price[$node->language][0]['value'] = $form_state['storage']['total_price'];	
+	$node->field_sub_fee[$node->language][0]['value'] = $form_state['storage']['sub_total'];	
+	$node->field_total[$node->language][0]['value'] = $form_state['storage']['total'];	
+	
+	$node->field_status[$node->language][0]['value'] = TRANS_WAIT_CONFIRM;	
+	
+	
+  	$path = 'content/transaction-'.$form_state['storage']['trans_title']	;
+  	$node->path = array('alias' => $path);
+	
+  	node_save($node);
+    // Don't rebuild.
+    drupal_set_message(t('Form complete!'));
+  }
+}
+function multistep_theme(){
+  return array(
+    'multistep_form_heard' => array(
+      'render element' => 'form',
+      'template' => 'user-multistep_form_heard',
+    ),
+  );
+}
+

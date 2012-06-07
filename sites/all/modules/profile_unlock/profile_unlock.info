@@ -1,0 +1,4 @@
+name = Profile Unlock
+description = Unlock the core Profile module.
+core = 7.x
+files[] = profile_unlock.module
